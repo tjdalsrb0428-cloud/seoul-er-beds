@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>응급실 도착 확률</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">+</span>
+      <div>
+        <h1>응급실 도착 확률</h1>
+        <p class="tag">서울 응급실 50곳 · 확률 및 랜덤변수 텀프로젝트 시연용</p>
+      </div>
+    </div>
+    <div class="status" id="status"></div>
+  </header>
+
+  <main class="layout">
+    <section class="side" id="side">
+      <!-- 메인 화면 -->
+      <div id="mainView">
+        <div class="card controls">
+          <label class="field">
+            <span>출발지</span>
+            <select id="origin"></select>
+          </label>
+          <p class="hint">지도를 클릭해서 출발지를 직접 정할 수도 있어요.</p>
+          <div class="field">
+            <span>출발 시각</span>
+            <div class="seg" role="group" aria-label="출발 시각">
+              <button type="button" id="modeNow" class="on">지금</button>
+              <button type="button" id="modeHour">시간 선택</button>
+            </div>
+            <div id="hourRow" class="hour-row hidden">
+              <input type="range" id="hour" min="0" max="23" step="1" value="21" aria-label="출발 시각(시)">
+              <output id="hourOut">21시</output>
+            </div>
+          </div>
+          <label class="check"><input type="checkbox" id="useLive" checked> 실시간 상태 반영 <small id="liveInfo"></small></label>
+          <label class="check"><input type="checkbox" id="severe"> 권역·지역응급의료센터만 (중증 환자)</label>
+        </div>
+
+        <div class="card summary">
+          <h2>추천 방문 순서로 가면</h2>
+          <div class="kpis">
+            <div><b id="kET">–</b><span>예상 소요시간 E[T]</span></div>
+            <div><b id="kEN">–</b><span>예상 시도 수 E[N]</span></div>
+            <div><b id="kN95">–</b><span>95% 확보까지</span></div>
+          </div>
+          <p class="compare" id="compareLine"></p>
+          <details class="more">
+            <summary>전략별 비교 · N의 분포</summary>
+            <table class="strat" id="stratTable"></table>
+            <div id="pmfChart" class="chart"></div>
+            <p class="note">막대 = P[N = n] (n곳째에서 처음 병상 확보), 선 = 누적 P[N ≤ n]</p>
+          </details>
+        </div>
+
+        <h2 class="list-title">추천 순서 <small>(가까운 후보 8곳 중 E[T] 최소 순서)</small></h2>
+        <ol class="route" id="routeList"></ol>
+
+        <h2 class="list-title">주변 응급실 <small>(바로 갔을 때 도착 시 병상 확률)</small></h2>
+        <ul class="hlist" id="hospList"></ul>
+
+        <details class="card method">
+          <summary>계산 방법 (수업 개념)</summary>
+          <ul>
+            <li><b>도착 시 병상 A<sub>i</sub> ~ Bernoulli(p<sub>i</sub>)</b>: 수집 데이터에서 병원·시간대별로 병상이 있었던 비율. 관측이 적으면 라플라스 보정(베이즈 추정)으로 전체 평균 쪽으로 당김.</li>
+            <li><b>실시간 반영 = 조건부확률</b>: 지금 '병상 있음/만실'일 때 Δ분 뒤 도착하면 병상이 있을 확률 P[A(t+Δ)=1 | A(t)].</li>
+            <li><b>E[T]</b> = Σ<sub>k</sub> P[N ≥ k]·D<sub>k</sub> + 확인시간 × Σ<sub>k</sub> P[N &gt; k], &nbsp; P[N ≥ k] = Π<sub>j&lt;k</sub>(1 − p<sub>j</sub>)</li>
+            <li><b>N의 분포</b>: P[N = n] = Π<sub>j&lt;n</sub>(1 − p<sub>j</sub>) · p<sub>n</sub> (병원마다 p가 다른 Geometric의 일반화). 병원 간 독립을 가정하므로, 동시에 붐비는 실제 상황에서는 더 나쁠 수 있음.</li>
+            <li><b>기다리기 vs 옮기기</b>: 만실 지속시간 W ~ Exponential이면 무기억성에 의해 남은 대기시간 기댓값 = E[W].</li>
+            <li id="assumpLine"></li>
+          </ul>
+        </details>
+        <p class="disclaimer">교육용 프로토타입입니다. 과거 수집 데이터로 추정한 확률이며 실제 수용 가능 여부와 다를 수 있습니다. <b>실제 응급 상황에서는 119에 연락하세요.</b></p>
+      </div>
+
+      <!-- 병원 상세 -->
+      <div id="detailView" class="hidden">
+        <button type="button" class="back" id="back">← 목록으로</button>
+        <div id="detail"></div>
+      </div>
+    </section>
+
+    <section class="mapwrap"><div id="map" aria-label="응급실 지도"></div>
+      <div class="legend">
+        <span><i class="dot hi"></i>70% 이상</span><span><i class="dot mid"></i>40–70%</span><span><i class="dot lo"></i>40% 미만</span>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app_data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

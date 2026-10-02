@@ -20,6 +20,13 @@
 - `hvec`: 응급실 가용 병상 수 → 분석의 B_i(t). **음수 = 정원 초과(과밀)**, 만실로 처리
 - 그 외: 수술실·입원실·중환자실 가용 수, 장비/구급차 가용 여부
 
+## 시연 앱 (`docs/`)
+- `docs/index.html` 을 브라우저로 열면 바로 실행 (인터넷 연결 필요: 지도·실시간 데이터)
+- 확률 추정치 `docs/app_data.js` 는 `update-app.yml` 이 6시간마다 자동 갱신
+  (수동: `python analysis/export_app.py`)
+- '지금 상태'는 이 저장소의 최신 `data/*.csv` 를 앱이 직접 읽음
+- 시연용 바로가기: `index.html#h=병원ID` → 해당 병원 상세 화면
+
 ## 주의
 - 인증키는 코드에 쓰지 말고 저장소 Settings → Secrets 의 `SERVICE_KEY` 로만 관리
 - GitHub 예약 실행은 몇 분씩 밀리거나 가끔 빠짐 → 분석 시 실제 `collected_at` 간격 사용
