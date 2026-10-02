@@ -24,11 +24,14 @@
       <!-- 메인 화면 -->
       <div id="mainView">
         <div class="card controls">
-          <label class="field">
+          <div class="field">
             <span>출발지</span>
-            <select id="origin"></select>
-          </label>
-          <p class="hint">지도를 클릭해서 출발지를 직접 정할 수도 있어요.</p>
+            <div class="origin-row">
+              <select id="origin" aria-label="출발지"></select>
+              <button type="button" id="myLoc" class="locbtn">내 위치</button>
+            </div>
+          </div>
+          <p class="hint" id="originHint">‘내 위치’ 또는 지도 클릭으로 출발지를 정할 수 있어요.</p>
           <div class="field">
             <span>출발 시각</span>
             <div class="seg" role="group" aria-label="출발 시각">

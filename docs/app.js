@@ -121,6 +121,13 @@ const color = p => getComputedStyle(document.documentElement).getPropertyValue(`
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const $ = id => document.getElementById(id);
 
+/** 카카오맵 길찾기 링크 (API 키 불필요한 공개 링크 형식) */
+function kakaoLink(h, big = false) {
+  const o = state.origin, from = encodeURIComponent(state.originName || "출발지");
+  const url = `https://map.kakao.com/link/from/${from},${o.lat},${o.lon}/to/${encodeURIComponent(h.name)},${h.lat},${h.lon}`;
+  return `<a class="kakao${big ? " big" : ""}" href="${url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">카카오맵 길찾기</a>`;
+}
+
 function liveBadge(h) {
   if (!state.live || !(h.hpid in state.live.byId)) return "";
   const b = state.live.byId[h.hpid];
@@ -156,7 +163,7 @@ function render() {
       <span class="num">${i + 1}</span>
       <div><div class="rname">${esc(s.h.name)} ${liveBadge(s.h)}</div>
         <div class="rmeta">${esc(s.h.type)} · 출발 후 ${mins(s.arrive)} 도착</div>
-        <div class="reach">여기까지 올 확률 ${pct(s.reach)}</div></div>
+        <div class="reach">여기까지 올 확률 ${pct(s.reach)}</div>${i === 0 ? kakaoLink(s.h) : ""}</div>
       <div class="pbig ${lvl(s.p)}-t">${pct(s.p)}<small>도착 시 병상</small></div>
     </li>`).join("");
 
@@ -219,6 +226,7 @@ function showDetail(id) {
 
   $("detail").innerHTML = `
     <div class="dhead"><h2>${esc(h.name)}</h2><p>${esc(h.type)} · 응급실 정원 ${h.capacity ?? "?"}병상 · 관측 ${h.n_obs}회</p></div>
+    ${kakaoLink(h, true)}
     <div class="card bigp"><b class="${lvl(p)}-t">${pct(p)}</b>
       <span>${mins(d0)} 뒤 도착했을 때 병상이 있을 확률 P[A = 1]</span></div>
     <div class="card"><dl class="rows">
@@ -285,11 +293,19 @@ function setOrigin(lat, lon, name) {
 function init() {
   hospitals = D.hospitals.filter(h => h.lat && h.lon);
   map = L.map("map", { zoomControl: true }).setView([37.55, 126.99], 11);
-  // OSM·CARTO 타일 서버는 file:// 로 연 페이지(Referer 없음)를 차단 → Esri 타일 사용
-  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
-    maxZoom: 19,
-    attribution: "Tiles &copy; Esri — Esri, HERE, Garmin, OpenStreetMap contributors",
+  // 타일 서버 선택: OSM 공식·CARTO 는 file:// 로 연 페이지(Referer 없음)를 차단하고,
+  // Esri 는 한국 상세 지도가 13배율까지만 있음 → OSM 프랑스의 HOT 스타일(한글 지명 정상) 사용,
+  // 막히면 OSM 독일 서버로 자동 전환
+  const OSM = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+  let tiles = L.tileLayer("https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png", {
+    maxZoom: 19, subdomains: "abc", attribution: `${OSM}, 스타일 HOT · OpenStreetMap France`,
   }).addTo(map);
+  let tileErrors = 0;
+  tiles.on("tileerror", () => {
+    if (++tileErrors !== 6) return;
+    map.removeLayer(tiles);
+    tiles = L.tileLayer("https://tile.openstreetmap.de/{z}/{x}/{y}.png", { maxZoom: 18, attribution: `${OSM} · OSM Deutschland` }).addTo(map);
+  });
   layer = L.layerGroup().addTo(map);
   // 그리드 레이아웃이 자리 잡은 뒤 지도 크기 재계산 (안 하면 일부가 회색으로 비어 보임)
   new ResizeObserver(() => map.invalidateSize()).observe(document.getElementById("map"));
@@ -302,7 +318,25 @@ function init() {
     const [lat, lon] = D.origins[sel.value.replace(/청$/, "")];
     setOrigin(lat, lon, sel.value); map.setView([lat, lon], 12);
   };
-  map.on("click", e => { sel.value = "custom"; setOrigin(e.latlng.lat, e.latlng.lng, "지도에서 선택한 위치"); });
+  const custom = name => { sel.value = "custom"; sel.querySelector('option[value="custom"]').textContent = name; };
+  map.on("click", e => { custom("지도에서 선택한 위치"); setOrigin(e.latlng.lat, e.latlng.lng, "지도에서 선택한 위치"); });
+
+  // 내 위치 (구급대원 단말의 GPS). https 또는 파일로 열었을 때 브라우저가 권한을 물어봄
+  $("myLoc").onclick = () => {
+    const hint = $("originHint");
+    if (!navigator.geolocation) { hint.textContent = "이 브라우저는 위치 기능을 지원하지 않아요."; hint.classList.add("err"); return; }
+    $("myLoc").disabled = true; hint.classList.remove("err"); hint.textContent = "현재 위치 확인 중…";
+    navigator.geolocation.getCurrentPosition(pos => {
+      $("myLoc").disabled = false;
+      const { latitude: lat, longitude: lon, accuracy } = pos.coords;
+      custom("내 위치"); setOrigin(lat, lon, "내 위치"); map.setView([lat, lon], 13);
+      hint.textContent = `현재 위치 사용 중 (오차 약 ${Math.round(accuracy)}m)`;
+    }, err => {
+      $("myLoc").disabled = false; hint.classList.add("err");
+      hint.textContent = err.code === 1 ? "위치 권한이 거부됐어요. 브라우저 주소창 왼쪽에서 위치 권한을 허용해 주세요."
+                                        : "현재 위치를 가져오지 못했어요. 구청이나 지도 클릭으로 정해 주세요.";
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+  };
 
   $("modeNow").onclick = () => { state.mode = "now"; $("modeNow").classList.add("on"); $("modeHour").classList.remove("on"); $("hourRow").classList.add("hidden"); render(); };
   $("modeHour").onclick = () => { state.mode = "hour"; $("modeHour").classList.add("on"); $("modeNow").classList.remove("on"); $("hourRow").classList.remove("hidden"); render(); };
