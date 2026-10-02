@@ -22,6 +22,7 @@ LIST_URL = BASE + "getEgytListInfoInqire"              # 응급의료기관 목�
 DATA_DIR = "data"
 HOSP_PATH = os.path.join(DATA_DIR, "hospitals.csv")
 SAMPLE_PATH = os.path.join(DATA_DIR, "sample_response.xml")
+FAIL_PATH = os.path.join(DATA_DIR, "failed_runs.csv")   # 접속 실패로 건너뛴 회차
 KST = timezone(timedelta(hours=9))  # 한국은 서머타임 없음
 
 # 저장할 실시간 필드. 이름이 틀리거나 응답에 없으면 빈 칸으로 저장됨
@@ -48,8 +49,10 @@ def call(url, params, retries=3):
     params = {"serviceKey": SERVICE_KEY, **params}
     last = None
     for attempt in range(1, retries + 1):
+        # 짝수 번째 시도는 https 로 (http 접속이 막히는 경우 대비)
+        u = url.replace("http://", "https://") if attempt % 2 == 0 else url
         try:
-            r = requests.get(url, params=params, timeout=20)
+            r = requests.get(u, params=params, timeout=20)
             if r.status_code != 200:
                 raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
             root = ET.fromstring(r.content)
@@ -59,10 +62,18 @@ def call(url, params, retries=3):
             return root, r.content
         except Exception as e:  # 네트워크/파싱/API 오류 모두 재시도
             last = e
-            print(f"  시도 {attempt}/{retries} 실패: {e}")
+            # 네트워크 오류 메시지엔 키가 든 URL이 들어 있어 종류만 출력
+            msg = type(e).__name__ if isinstance(e, requests.RequestException) else e
+            print(f"  시도 {attempt}/{retries} 실패: {msg}")
             if attempt < retries:
                 time.sleep(15)
+    if isinstance(last, requests.RequestException):
+        raise NetworkError(last)
     raise RuntimeError(f"호출 최종 실패: {last}")
+
+
+class NetworkError(Exception):
+    """포털 서버 접속 자체가 안 됨 (일시적). 키/파라미터 문제와 구분."""
 
 
 def fetch_all(url, params):
@@ -119,7 +130,17 @@ def main():
         except Exception as e:  # 위치 정보 실패해도 병상 수집은 계속
             print("병원 목록 수집 실패(다음 실행 때 재시도):", e)
 
-    if collect_snapshot() == 0:
+    try:
+        n = collect_snapshot()
+    except NetworkError as e:
+        # 일시적 접속 장애는 실패로 끝내지 않고 기록만 남김 (실패 메일 방지, 결측 구간 추적용)
+        # 주의: 오류 메시지에는 인증키가 든 URL이 포함되므로 오류 '종류'만 저장 (공개 저장소!)
+        kind = type(e.args[0]).__name__ if e.args else "NetworkError"
+        append_csv(FAIL_PATH, ["attempted_at", "error"],
+                   [[datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"), kind]])
+        print("포털 접속 실패 — 이번 회차는 건너뜀:", kind)
+        return
+    if n == 0:
         sys.exit("응답에 병원이 0곳 — 파라미터/키 확인 필요")
 
 
