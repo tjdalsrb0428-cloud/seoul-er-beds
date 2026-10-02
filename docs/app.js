@@ -285,8 +285,10 @@ function setOrigin(lat, lon, name) {
 function init() {
   hospitals = D.hospitals.filter(h => h.lat && h.lon);
   map = L.map("map", { zoomControl: true }).setView([37.55, 126.99], 11);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 18, attribution: "&copy; OpenStreetMap",
+  // OSM·CARTO 타일 서버는 file:// 로 연 페이지(Referer 없음)를 차단 → Esri 타일 사용
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 19,
+    attribution: "Tiles &copy; Esri — Esri, HERE, Garmin, OpenStreetMap contributors",
   }).addTo(map);
   layer = L.layerGroup().addTo(map);
   // 그리드 레이아웃이 자리 잡은 뒤 지도 크기 재계산 (안 하면 일부가 회색으로 비어 보임)
