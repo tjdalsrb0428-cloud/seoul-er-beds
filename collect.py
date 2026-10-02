@@ -37,6 +37,7 @@ RLTM_FIELDS = [
     "hvccc",   # 흉부 중환자실
     "hvctayn", "hvmriayn", "hvangioayn", "hvventiayn",  # 장비 가용 Y/N
     "hvamyn",  # 구급차 가용 Y/N
+    "hvs01",   # 응급실 기준 병상 수 (정원 C_i)
 ]
 HOSP_FIELDS = ["hpid", "dutyName", "dutyEmclsName", "dutyAddr",
                "wgs84Lat", "wgs84Lon", "dutyTel3"]
