@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: collect            # 수집 커밋과 겹치지 않게 같은 그룹 사용
+  group: app-data           # 수집은 몇 시간짜리 실행이라 그룹을 분리 (push 충돌은 pull --rebase로 처리)
   cancel-in-progress: false
 
 jobs:

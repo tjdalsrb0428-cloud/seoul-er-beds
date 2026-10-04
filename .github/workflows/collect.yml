@@ -1,8 +1,14 @@
 name: collect-er-beds
 
+# GitHub 예약 실행(cron)은 몇 시간씩 밀리거나 빠질 때가 많아서,
+# 한 번 실행되면 그 안에서 5분마다 수집을 반복하며 ~5시간 반 동안 계속 돈다.
+# cron은 "꺼져 있으면 다시 켜 주는" 용도. 실행 중에 온 예약은 대기열에 1개만 남았다가
+# 지금 실행이 끝나면 바로 이어서 시작됨 → 끊김 없이 연속 수집.
+# 공개 저장소라 Actions 사용 시간은 무료.
+
 on:
   schedule:
-    - cron: "*/5 * * * *"   # 5분마다 (GitHub 사정으로 몇 분씩 밀릴 수 있음)
+    - cron: "*/30 * * * *"
   workflow_dispatch:         # Actions 탭에서 수동 실행 버튼
 
 permissions:
@@ -15,7 +21,7 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 355     # GitHub 한도 360분
     steps:
       - uses: actions/checkout@v4
 
@@ -25,20 +31,26 @@ jobs:
 
       - run: pip install requests
 
-      - name: Collect snapshot
+      - name: Collect every 5 minutes (~5.5h)
         env:
           SERVICE_KEY: ${{ secrets.SERVICE_KEY }}
-        run: python collect.py
-
-      - name: Commit data
         run: |
           git config user.name "er-collector-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add data
-          git diff --cached --quiet && exit 0
-          git commit -m "data: $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M')"
-          for i in 1 2 3; do
-            git pull --rebase && git push && exit 0
-            sleep 5
+          END=$(( $(date +%s) + 330*60 ))
+          while :; do
+            # 커밋 전에 최신 상태로 맞춤 (앱 데이터 갱신 커밋과 충돌 방지)
+            git pull --rebase -q || true
+            python collect.py || echo "::warning::collect.py 실패 — 다음 회차에 재시도"
+            git add data
+            if ! git diff --cached --quiet; then
+              git commit -q -m "data: $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M')"
+              for i in 1 2 3; do
+                git pull --rebase -q && git push -q && break
+                sleep 5
+              done
+            fi
+            [ "$(date +%s)" -ge "$END" ] && break
+            # 다음 5분 정각(00, 05, 10, ...)까지 대기
+            sleep $(( 300 - $(date +%s) % 300 ))
           done
-          exit 1

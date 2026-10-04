@@ -1,6 +1,6 @@
 # 서울 응급실 가용 병상 자동 수집
 
-확률 및 랜덤변수 텀프로젝트용. GitHub Actions가 5분마다 공공데이터포털
+확률 및 랜덤변수 텀프로젝트용. GitHub Actions가 5분마다 (한 번 실행되면 5분 간격으로 ~5시간 반 반복) 공공데이터포털
 「전국 응급의료기관 정보 조회 서비스」를 호출해 서울특별시 전체 응급실의
 실시간 가용 병상을 `data/` 폴더에 쌓는다. PC를 켜 둘 필요 없음.
 
@@ -8,7 +8,7 @@
 | 파일 | 내용 |
 |---|---|
 | `collect.py` | 1회 실행 = 서울 전체 스냅샷 1회 저장 |
-| `.github/workflows/collect.yml` | 5분마다 `collect.py` 실행 후 자동 커밋 |
+| `.github/workflows/collect.yml` | 실행 1회당 5분 간격으로 ~5.5시간 수집·커밋 반복, 30분 cron으로 재시작 |
 | `data/YYYY-MM-DD.csv` | 날짜별 수집 데이터 (KST 기준) |
 | `data/hospitals.csv` | 병원 목록·좌표 (첫 실행 때 1회 생성) |
 | `data/sample_response.xml` | API 원본 응답 예시 (필드 확인용) |
