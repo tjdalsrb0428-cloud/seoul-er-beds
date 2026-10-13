@@ -128,7 +128,8 @@ def main():
         try:
             collect_hospitals()
         except Exception as e:  # 위치 정보 실패해도 병상 수집은 계속
-            print("병원 목록 수집 실패(다음 실행 때 재시도):", e)
+            # 네트워크 오류 메시지엔 키가 든 URL이 들어 있어 종류만 출력 (공개 로그!)
+            print("병원 목록 수집 실패(다음 실행 때 재시도):", type(e).__name__)
 
     try:
         n = collect_snapshot()
