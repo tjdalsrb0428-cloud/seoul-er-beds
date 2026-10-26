@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>응급실 시뮬레이터</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>응급실 시뮬레이터</h1>
+      <p class="sub">우리가 모은 서울 응급실 기록으로 확률을 구하고, 그 확률로 '가짜 서울 응급실'을 만들어 진짜와 비교합니다</p>
+    </div>
+    <p class="meta" id="meta"></p>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="engine" class="on">전체 재현</button>
+    <button data-tab="q1">Q1 · 15분 뒤에도 자리가 있을까</button>
+    <button data-tab="q2">Q2 · 몇 곳을 돌아야 할까</button>
+    <button data-tab="q3">Q3 · 기다릴까 옮길까</button>
+    <button data-tab="about">이게 뭔가요?</button>
+  </nav>
+
+  <div class="layout">
+    <aside class="side">
+      <section class="panel">
+        <h2>가짜 응급실 설정</h2>
+        <label class="field">
+          <span>병원마다 꽉 찰 확률</span>
+          <select id="level">
+            <option value="1">모든 병원 똑같이</option>
+            <option value="2">병원마다 다르게</option>
+            <option value="3" selected>병원 · 요일 · 시간대마다 다르게</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>날마다 붐비는 정도 차이 <b id="sigmaV"></b></span>
+          <input type="range" id="sigma" min="0" max="0.6" step="0.05" value="0.3">
+          <small id="sigmaHelp"></small>
+        </label>
+        <div class="field">
+          <span>꽉 찬 상태가 풀리는 방식</span>
+          <p class="durSummary" id="durSummary"></p>
+          <small>Q3 탭에서 바꿀 수 있어요</small>
+        </div>
+        <label class="field">
+          <span>몇 번 돌려 볼까</span>
+          <select id="reps">
+            <option value="10">10번</option>
+            <option value="20" selected>20번</option>
+            <option value="50">50번</option>
+          </select>
+        </label>
+        <button class="btn" id="reroll">주사위 새로 굴리기</button>
+        <p class="progress" id="progress"></p>
+      </section>
+      <section class="panel note">
+        <h2>'비슷함'의 기준</h2>
+        <p>주사위라서 돌릴 때마다 결과가 조금씩 달라요. 여러 번 돌린 결과가 흔들리는 범위(평균 ± 2σ, 약 95%) 안에 실제 값이 들어오면 <span class="ok">비슷함</span>, 벗어나면 <span class="bad">다름</span>입니다.</p>
+      </section>
+    </aside>
+
+    <main class="main">
+      <!-- 전체 재현 -->
+      <section class="view on" id="v-engine">
+        <div class="card">
+          <div class="cardHead">
+            <div>
+              <h3>진짜 서울 vs 가짜 서울</h3>
+              <p class="hint">점 하나가 응급실 하나. <span class="dot full"></span>꽉 참 <span class="dot avail"></span>자리 있음 <span class="dot miss"></span>기록 없음</p>
+            </div>
+            <div class="clock" id="clock"></div>
+          </div>
+          <div class="maps">
+            <div><div class="mapHead"><b>진짜</b> 실제 기록 <span class="count" id="cntReal"></span></div><div id="mapReal" class="map"></div></div>
+            <div><div class="mapHead"><b>가짜</b> 시뮬레이션 <span class="count" id="cntSim"></span></div><div id="mapSim" class="map"></div></div>
+          </div>
+          <div class="player">
+            <button class="btn play" id="play">▶ 재생</button>
+            <input type="range" id="scrub" min="0" value="0">
+            <select id="speed">
+              <option value="2">1초에 10분</option>
+              <option value="12" selected>1초에 1시간</option>
+              <option value="72">1초에 6시간</option>
+            </select>
+          </div>
+          <div id="spark" class="spark"></div>
+          <p class="hint">위 그래프: 그 시각에 꽉 찬 응급실 수 (1시간 평균). 누르면 그 시각으로 이동</p>
+        </div>
+
+        <div class="card answer" id="engineAnswer"></div>
+
+        <div class="checks" id="engineChecks"></div>
+
+        <details class="card">
+          <summary>'날마다 붐비는 정도 차이'를 조금씩 바꿔 보기</summary>
+          <p class="hint">0부터 0.6까지 0.05씩 바꾸며 각각 10번씩 돌려, 여러 병원이 같이 꽉 차는 정도가 실제와 가장 비슷한 값을 찾습니다.</p>
+          <button class="btn ghost narrow" id="sweepBtn">자동으로 찾기</button>
+          <div id="chartSweep"></div>
+        </details>
+
+        <details class="card">
+          <summary>자세히 보기: 일주일 타임라인 · 꽉 찬 병원 수 분포 · 전체 비교표</summary>
+          <div class="cardHead" style="margin-top:14px">
+            <h4>일주일 타임라인</h4>
+            <select id="week"></select>
+          </div>
+          <p class="hint">가로 = 시간(5분 단위), 세로 = 병원(자주 꽉 차는 곳이 위). 빨강 = 꽉 참</p>
+          <div class="tl"><div class="tlLabel">진짜</div><canvas id="tlReal"></canvas></div>
+          <div class="tl"><div class="tlLabel">가짜</div><canvas id="tlSim"></canvas></div>
+          <div class="tlAxis" id="tlAxis"></div>
+          <h4>동시에 꽉 찬 병원 수</h4>
+          <p class="hint">병원들이 따로 논다면 좁게 모이고, 같이 바빠지면 넓게 퍼집니다</p>
+          <div id="chartC"></div>
+          <h4>전체 비교표</h4>
+          <div id="engineTable"></div>
+        </details>
+        <div class="tip" id="tip"></div>
+      </section>
+
+      <!-- Q1 -->
+      <section class="view" id="v-q1">
+        <div class="card answer" id="q1Answer"></div>
+        <div class="grid2 wideRight">
+          <div class="card">
+            <h3>가짜 응급실의 환자 흐름</h3>
+            <p class="hint">15분 동안 들어오고 나가는 환자 수를 주사위로 정합니다</p>
+            <label class="field"><span>시간대</span>
+              <select id="q1slot"><option value="all">하루 전체</option><option value="0">새벽 0–6시</option><option value="1">오전 6–12시</option><option value="2">오후 12–18시</option><option value="3">저녁 18–24시</option></select></label>
+            <label class="field"><span>15분에 평균 몇 명 오나 <b id="q1aV"></b></span><input type="range" id="q1a" min="0.05" max="1.5" step="0.01"><small>α, Poisson 분포의 평균</small></label>
+            <label class="field"><span>15분에 평균 몇 명 나가나 <b id="q1bV"></b></span><input type="range" id="q1b" min="0" max="1.5" step="0.01" value="0"><small>β, 0이면 15분 동안 아무도 안 나감</small></label>
+            <label class="field"><span>환자가 몰려오는 정도 <b id="q1sV"></b></span><input type="range" id="q1s" min="0" max="2" step="0.05" value="0"><small id="q1sHelp"></small></label>
+            <button class="btn" id="q1auto">실제와 가장 비슷한 값 자동으로 찾기</button>
+            <button class="btn ghost" id="q1fit" style="margin-top:8px">처음으로 (고르게 온다고 가정)</button>
+          </div>
+          <div class="card">
+            <h3>지금 남은 병상이 b개일 때, 15분 뒤 꽉 찰 확률</h3>
+            <div id="q1Bars"></div>
+            <details>
+              <summary>자세히 보기 (로그 눈금 그래프 · 표)</summary>
+              <div id="chartQ1"></div>
+              <div id="q1Table"></div>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <!-- Q2 -->
+      <section class="view" id="v-q2">
+        <div class="card answer" id="q2Answer"></div>
+        <div class="grid2 wideRight">
+          <div class="card">
+            <h3>구급차 한 대 따라가 보기</h3>
+            <label class="field"><span>출발지</span><select id="q2origin"></select></label>
+            <label class="field"><span>병원 고르는 순서</span>
+              <select id="q2strat"><option value="near">가까운 순서</option><option value="exp">꽉 찰 확률까지 따진 순서</option></select></label>
+            <label class="field"><span>거절당하는 데 걸리는 시간 <b id="q2hV"></b></span><input type="range" id="q2h" min="0" max="20" step="1"></label>
+            <label class="field"><span>구급차 평균 속도 <b id="q2vV"></b></span><input type="range" id="q2v" min="15" max="60" step="1"></label>
+            <button class="btn" id="q2roll">다른 장면 보기</button>
+            <p class="story" id="q2story"></p>
+          </div>
+          <div class="card">
+            <h3>가짜 서울 속 한 장면</h3>
+            <div id="q2map" class="map"></div>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="card"><h3>몇 번째 병원에서 받아 줬나</h3><p class="hint">25개 구청에서 30분마다 출발했다고 치고 전부 따라가 본 결과</p><div id="chartQ2"></div></div>
+          <div class="card"><h3>진짜 vs 가짜</h3><div id="q2Table"></div></div>
+        </div>
+      </section>
+
+      <!-- Q3 -->
+      <section class="view" id="v-q3">
+        <div class="card answer" id="q3Answer"></div>
+        <div class="grid2 wideRight">
+          <div class="card">
+            <h3>꽉 찬 상태가 풀리는 방식</h3>
+            <label class="check"><input type="radio" name="q3kind" id="q3one" checked> 한 종류 (지수분포)</label>
+            <label class="check"><input type="radio" name="q3kind" id="q3mix"> 금방 풀리는 것 + 오래가는 것 섞기</label>
+            <div id="q3mixBox" class="sub-fields">
+              <label class="field"><span>금방 풀리는 만실의 비율 <b id="q3piV"></b></span><input type="range" id="q3pi" min="0.05" max="0.95" step="0.05" value="0.6"></label>
+              <label class="field"><span>금방 풀리는 만실은 평균 <b id="q3msV"></b></span><input type="range" id="q3ms" min="5" max="60" step="1" value="10"></label>
+              <small>오래가는 만실의 평균은 병원 전체 평균이 유지되도록 자동으로 정해져요</small>
+            </div>
+            <label class="check"><input type="checkbox" id="q3hosp" checked> 병원마다 평균 길이 다르게</label>
+            <label class="check"><input type="checkbox" id="q3slot"> 시간대마다 평균 길이 다르게</label>
+            <button class="btn" id="q3auto">실제와 가장 비슷한 값 자동으로 찾기</button>
+            <p class="progress" id="q3prog"></p>
+            <hr>
+            <label class="field"><span>다른 병원으로 옮기는 데 드는 시간 <b id="q3moveV"></b></span><input type="range" id="q3move" min="3" max="40" step="1"><small>거절 5분 + 가장 가까운 다른 응급실까지 이동 (서울 중앙값)</small></label>
+          </div>
+          <div class="card">
+            <h3>이미 꽉 찬 지 오래된 병원일수록, 앞으로 더 기다려야 하는 시간</h3>
+            <div id="q3Bars"></div>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="card"><h3>진짜 vs 가짜</h3><div id="q3Table"></div></div>
+          <div class="card">
+            <h3>꽉 찬 상태가 d분 넘게 갈 확률</h3>
+            <p class="hint">세로는 로그 눈금. 빨간 선(진짜)에 회색 선(가짜)이 겹칠수록 잘 맞는 것</p>
+            <div id="chartQ3a"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 설명 -->
+      <section class="view" id="v-about">
+        <div class="card prose">
+          <h3>이게 뭔가요?</h3>
+          <p>우리가 3주 동안 모은 서울 응급실 기록(5분마다 50곳이 꽉 찼는지)을 컴퓨터가 <b>주사위를 굴려 '가짜 기록'으로 다시 만들어 보는</b> 도구입니다. 주사위의 확률은 실제 기록에서 구한 값을 씁니다.</p>
+          <p>가짜 기록이 진짜와 비슷하게 생겼다면 우리 확률 모델이 현실을 잘 설명하는 것이고, 다르다면 가정 어딘가가 틀린 것입니다. 설정을 조금씩 바꿔 가며 어디서 비슷해지는지 찾는 것이 목표입니다.</p>
+          <div class="flow">
+            <div>진짜 기록<small>5분마다 50곳 꽉 찼는지</small></div><i>→</i>
+            <div>확률 구하기<small>꽉 찰 확률, 꽉 찬 상태가 가는 시간</small></div><i>→</i>
+            <div>주사위로 가짜 기록<small>같은 3주를 여러 번</small></div><i>→</i>
+            <div>똑같은 방법으로 비교<small>흔들림 범위 안인가?</small></div>
+          </div>
+          <h4>가짜 기록을 만드는 방법</h4>
+          <ol>
+            <li>매일 0시, 그날 서울 전체가 얼마나 바쁜지 정합니다. L ~ N(1, σ²)을 뽑아 모든 병원의 꽉 찰 확률에 곱합니다.</li>
+            <li>5분마다 병원마다 동전을 던집니다. 자리가 있으면 확률 a로 꽉 차고, 꽉 차 있으면 확률 d로 풀립니다.</li>
+            <li>d = 5분 ÷ 꽉 찬 상태의 평균 길이, a = d·p/(1 − p). 오래 돌리면 꽉 찬 비율이 실제 p와 같아지도록 맞춘 값입니다.</li>
+            <li>같은 날·같은 시간대라면 병원끼리는 따로 동전을 던집니다 (조건부 독립).</li>
+          </ol>
+          <h4>수업 개념과 연결</h4>
+          <table class="tbl">
+            <tr><th>시뮬레이터 부분</th><th>개념</th></tr>
+            <tr><td>병원 · 요일 · 시간대마다 다른 꽉 찰 확률</td><td>조건부 확률 (Ch1)</td></tr>
+            <tr><td>같은 날·시간대면 병원끼리 따로 동전</td><td>조건부 독립</td></tr>
+            <tr><td>5분마다 확률 d로 풀림 → 꽉 찬 상태의 길이</td><td>Geometric (Ch3) = 5분 단위 Exponential (Ch4)</td></tr>
+            <tr><td>금방 풀리는 것 / 오래가는 것 섞기</td><td>Bernoulli로 종류를 고른 뒤 Geometric, 전확률 정리 (Ch1)</td></tr>
+            <tr><td>15분 동안 오는 환자 수</td><td>Poisson (Ch3)</td></tr>
+            <tr><td>날마다 붐비는 정도, '비슷함' 판정 ± 2σ</td><td>Gaussian</td></tr>
+          </table>
+          <h4>한계</h4>
+          <p>병상 수는 병원이 직접 입력한 값이고, 의료진 부족은 반영하지 않았습니다. 이동시간은 직선거리 × 1.3 ÷ 평균 속도로 계산한 가정값입니다.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="sim_data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

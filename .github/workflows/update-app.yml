@@ -26,13 +26,15 @@ jobs:
       - run: pip install -r analysis/requirements.txt
 
       - name: Export app data
-        run: python analysis/export_app.py
+        run: |
+          python analysis/export_app.py
+          python analysis/export_sim.py
 
       - name: Commit
         run: |
           git config user.name "er-collector-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add docs/app_data.json docs/app_data.js
+          git add docs/app_data.json docs/app_data.js sim/sim_data.js
           git diff --cached --quiet && exit 0
           git commit -m "app: 확률 추정치 갱신 $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M')"
           for i in 1 2 3; do
